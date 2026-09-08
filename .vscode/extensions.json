@@ -1,0 +1,9 @@
+{
+    "recommendations": [
+        "arm.environment-manager",
+        "arm.cmsis-csolution",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "marus25.cortex-debug",
+        "arm.vscode-cmsis-debugger"
+    ]
+}

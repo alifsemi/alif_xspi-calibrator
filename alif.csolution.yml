@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Open-CMSIS-Pack/devtools/tools/projmgr/2.12.0/tools/projmgr/schemas/csolution.schema.json
+solution:
+  created-for: CMSIS-Toolbox@2.12.0
+  cdefault:
+
+  # List of tested compilers that can be selected
+  select-compiler:
+    - compiler: GCC
+    - compiler: CLANG
+
+  # Select used compiler
+  compiler: GCC
+
+  packs:
+    - pack: AlifSemiconductor::Ensemble@2.2.0
+    - pack: ARM::CMSIS@6.1.0
+
+  target-types:
+    - type: DevKit-E8-HE
+      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HE
+      board: Alif Semiconductor::DevKit-E8
+      variables:
+        - BoardLayer: $SolutionDir()$/board/devkit-e8/board.clayer.yml
+      target-set:
+        - set:
+          images:
+            - project-context: calibrator.debug
+
+    - type: DevKit-E8-HP
+      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
+      board: Alif Semiconductor::DevKit-E8
+      variables:
+        - BoardLayer: $SolutionDir()$/board/devkit-e8/board.clayer.yml
+      target-set:
+        - set:
+          images:
+            - project-context: calibrator.debug
+
+    - type: AppKit-E8-HE
+      device: Alif Semiconductor::AE822FA0E5597BS0:M55_HE
+      board: Alif Semiconductor::AppKit-E8-AIML
+      variables:
+        - BoardLayer: $SolutionDir()$/board/appkit-e8/board.clayer.yml
+      target-set:
+        - set:
+          images:
+            - project-context: calibrator.debug
+
+    - type: AppKit-E8-HP
+      device: Alif Semiconductor::AE822FA0E5597BS0:M55_HP
+      board: Alif Semiconductor::AppKit-E8-AIML
+      variables:
+        - BoardLayer: $SolutionDir()$/board/appkit-e8/board.clayer.yml
+      target-set:
+        - set:
+          images:
+            - project-context: calibrator.debug
+
+  build-types:
+    - type: debug
+      optimize: none
+      debug: on
+      define:
+        - _DEBUG
+    - type: release
+      optimize: speed
+      debug: on
+
+  define:
+    - UNICODE
+    - _UNICODE
+
+  projects:
+    - project: calibrator/calibrator.cproject.yml

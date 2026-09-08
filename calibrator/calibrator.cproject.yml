@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Open-CMSIS-Pack/devtools/tools/projmgr/2.12.0/tools/projmgr/schemas/cproject.schema.json
+project:
+  groups:
+    - group: App
+      files:
+        - file: main.c
+        - file: power_management/power_management.c
+        - file: ram_test/ram_test.c
+        - file: mpu.c
+        - file: ospi_drv.c
+        - file: aps512xxn.c
+        - file: is66.c
+        - file: is25w.c
+        - file: mx66uw1g.c
+        - file: cal_pattern.c
+
+  add-path:
+    - power_management
+    - ram_test
+
+  output:
+    base-name: $Project$
+    type:
+      - elf
+      - bin
+
+  layers:
+    - layer: $BoardLayer$
+
+  components:
+    - component: ARM::CMSIS:CORE
+    - component: ARM::CMSIS-Compiler:CORE
+    - component: ARM::CMSIS-Compiler:STDOUT:Custom
+    - component: AlifSemiconductor::Services:Retarget IO:STDOUT
+    - component: AlifSemiconductor::Device:Startup
+    - component: AlifSemiconductor::Device:SOC Peripherals:PINCONF
+    - component: AlifSemiconductor::Device:SOC Peripherals:GPIO
+    - component: AlifSemiconductor::Device:SOC Peripherals:OSPI
+    - component: AlifSemiconductor::CMSIS Driver:USART
+    - component: Device:SOC Peripherals:MHU
+    - component: Services:Secure Enclave:core&Source
+    - component: Services:Secure Enclave:Initialization Helper&Source
+  packs:
+    - pack: ARM::CMSIS-Compiler
+
