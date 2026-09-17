@@ -236,7 +236,7 @@ static int is25w_wait_ready(ospi_cfg_t *ospi_ctx)
 
     ospi_clk_cfg(regs, IS25W_REG_WRITE_BAUD, IS25W_REG_WRITE_DRIVE_EDGE);
 
-    for (int poll = 0; poll < 100000; poll++) {
+    for (int poll = 0; poll < 1000; poll++) {
         uint8_t val = 0;
 
         if (is25w_read_flag_status(ospi_ctx, &val) != 0) {

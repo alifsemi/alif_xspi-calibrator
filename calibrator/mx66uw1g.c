@@ -242,7 +242,7 @@ static int mx66uw1g_wait_ready(ospi_cfg_t *ospi_ctx, uint8_t err_flags)
 
     ospi_clk_cfg(regs, MX66UW1G_REG_WRITE_BAUD, MX66UW1G_REG_WRITE_DRIVE_EDGE);
 
-    for (int poll = 0; poll < 100000; poll++) {
+    for (int poll = 0; poll < 1000; poll++) {
         uint8_t val = 0;
 
         if (mx66uw1g_read_reg(ospi_ctx, MX66UW1G_CMD_READ_STATUS, &val) != 0) {
