@@ -37,6 +37,8 @@ extern "C" {
 /* JEDEC manufacturer ID (RDID byte 0). 0x9D == ISSI. */
 #define IS25W_MANUFACTURER_ISSI           0x9DU
 
+#define IS25W_VOL_CONFIG_DRIVE_STRENGTH   0x03U
+
 /* Controller clock used for the direct-register VCR write path (is25w_write_reg).
  * The DFP may leave OSPI1 at an unknown baud after PowerControl, so a known slow
  * clock is programmed for the register write. Matches the tool's slow BAUD. */

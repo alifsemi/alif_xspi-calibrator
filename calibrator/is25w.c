@@ -339,6 +339,26 @@ int is25w_erase_sector(ospi_cfg_t *ospi_ctx, uint32_t address)
     return ret;
 }
 
+static int is25w_write_volatile_config(ospi_cfg_t *ospi_ctx, uint32_t vol_cfg_reg_addr, uint32_t value)
+{
+    OSPI_Type *regs = ospi_ctx->regs;
+
+    int ret = is25w_write_enable(ospi_ctx);
+    if (ret == 0) {
+        is25w_setup_cmd_send(regs, 16, SPI_INST_L_8_BIT, SPI_ADDR_L_32_BIT);
+
+        regs->OSPI_DR[0] = IS25W_CMD_WRITE_VOL_CONFIG;
+        regs->OSPI_DR[0] = vol_cfg_reg_addr;
+        regs->OSPI_DR[0] = value | (value << 8);
+
+        regs->OSPI_SER   = 1;
+        int ret          = is25w_wait_tx_done(regs);
+        regs->OSPI_SER   = 0;
+    }
+
+    return ret;
+}
+
 /* ==========================================================================
  * Setup / probe
  * ========================================================================== */
@@ -367,6 +387,13 @@ int is25w_setup(ospi_cfg_t *ospi_ctx)
     ospi_ctx->xip_dfs           = 16;
     ospi_ctx->read_wait_cycles  = RTE_ISSI_FLASH_WAIT_CYCLES;
     ospi_ctx->write_wait_cycles = IS25W_WRITE_WAIT_CYCLES;
+
+    // Boost drive strength: output impedance from default 50ohm to 35ohm
+    ret = is25w_write_volatile_config(ospi_ctx, IS25W_VOL_CONFIG_DRIVE_STRENGTH, 0xFE);
+    if(ret != 0) {
+        printf("IS25W: failed to set drive strength\n");
+        return ret;
+    }
 
     /* 6. XIP linear/wrap read opcodes (used when memory-mapped). */
     ospi_disable(ospi_ctx->regs);
