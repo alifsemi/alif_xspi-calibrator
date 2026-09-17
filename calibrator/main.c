@@ -66,10 +66,10 @@ ospi_delay_cfg_t delay_cfg_default = {
 // Manually tested AppKit-E8 DM delay value at 200MHz
 #define DEFAULT_TXD_DM_DELAY                7U
 
-ospi_delay_cfg_t delay_cfg_ram = {.idx = 0};
+ospi_delay_cfg_t delay_cfg_ram = {.idx = 0, .sclk_freq = 200000000};
 
 /* Separate calibrated config for the flash device (OSPI1 / AES1). */
-ospi_delay_cfg_t delay_cfg_flash = {.idx = 1};
+ospi_delay_cfg_t delay_cfg_flash = {.idx = 1, .sclk_freq = 200000000};
 
 #define OSPI0_XIP_BASE                          0xA0000000UL
 #define OSPI1_XIP_BASE                          0xC0000000UL

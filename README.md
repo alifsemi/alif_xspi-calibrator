@@ -32,12 +32,14 @@ The datamask signal calibration is skipped completely for flash and the memory t
 ```
 typedef struct ospi_delay_cfg {
     uint32_t idx;       /* OSPI controller the config belongs to (0 or 1) */
+    uint32_t sclk_freq; /* OSPI controller SCLK frequency */
     uint8_t txd[16];    /* per-line TXD delay taps (index 0..15)     */
     uint8_t rxd[16];    /* per-line RXD delay taps (index 0..15)     */
     uint8_t ssioen[16]; /* per-line OE_N delay taps (index 0..15)    */
     uint8_t rxds[2];    /* RXDS strobe delays (index 0..1)           */
     uint8_t txddm[2];   /* TXD DM data delays (index 0..1)           */
 } ospi_delay_cfg_t;
+
 ```
 
 **Container for the calibration results (Saved to 0x07FFF000 on a typical 128MiB device)**

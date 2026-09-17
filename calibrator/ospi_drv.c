@@ -317,6 +317,7 @@ void ospi_delay_cfg_print(const ospi_delay_cfg_t *cfg, const char *name)
     printf("ospi_delay_cfg_t %s = {\n", name);
 
     printf("    .idx    = %u,\n", (unsigned)cfg->idx);
+    printf("    .sclk_freq = %u,\n", (unsigned)cfg->sclk_freq);
 
     printf("    .txd    = { ");
     print_u8_array(cfg->txd, 16);
