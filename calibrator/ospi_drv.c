@@ -220,6 +220,7 @@ void ospi_xip_exit(ospi_cfg_t *ospi_ctx)
     ospi_enable(ospi_ctx->regs);
 }
 
+// TODO: Remove when the delay configuration functions are available in DFP 
 void ospi_delay_cfg_rxd(AES_Type *aes, const uint8_t delay_val[16])
 {
     aes->AES_RXD_DELAY_0 =
@@ -337,6 +338,17 @@ void ospi_delay_cfg_print(const ospi_delay_cfg_t *cfg, const char *name)
 
     printf("    .txddm  = { ");
     print_u8_array(cfg->txddm, 2);
+    printf(" },\n");
+
+    printf("    .dmoen  = { ");
+    print_u8_array(cfg->dmoen, 2);
+    printf(" },\n");
+
+    printf("    .sclk   = 0x%02x,\n", cfg->sclk);
+    printf("    .sclkn  = 0x%02x,\n", cfg->sclkn);
+
+    printf("    .ssn    = { ");
+    print_u8_array(cfg->ssn, 2);
     printf(" },\n");
 
     printf("};\n");
