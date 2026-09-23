@@ -49,27 +49,44 @@
 /* Passes over the whole calibration region in the final flash XIP read test. */
 #define CAL_XIP_FLASH_PASSES                  64
 
-
-#define BAUDR_FAST                            2
-#define DRIVE_EDGE_FAST                       0
-/* OSPI clock configuration (slow default) */
-#define BAUD                                  40
-#define DRIVE_EDGE                            1
-
 // The 'slow' default delay configuration
 #define DEFAULT_RXDS_DELAY                  11U
 
+// Use 16.67MHz as default 'slow' mode
+// This works with both OSPI input clocks (266MHz and 400MHz)
 ospi_delay_cfg_t delay_cfg_default = {
+    .sclk_freq = 16666666,
     .rxds = {DEFAULT_RXDS_DELAY, DEFAULT_RXDS_DELAY},
 };
 
 // Manually tested AppKit-E8 DM delay value at 200MHz
 #define DEFAULT_TXD_DM_DELAY                7U
 
-ospi_delay_cfg_t delay_cfg_ram = {.idx = 0, .sclk_freq = 200000000};
+/* Frequencies calibrated by this tool, ordered by pass. Each pass switches the
+ * shared OSPI core clock via ospi_clk_select() and then calibrates the RAM and
+ * flash controllers against the paired SCLK target. */
+#define N_CAL_FREQS 2
 
-/* Separate calibrated config for the flash device (OSPI1 / AES1). */
-ospi_delay_cfg_t delay_cfg_flash = {.idx = 1, .sclk_freq = 200000000};
+static const struct {
+    uint32_t    sclk_freq;      /* target OSPI SCLK for this pass          */
+    bool        clk_sel_266mhz; /* ospi_clk_select() arg: true=266, false=400 */
+    const char *id_str;         /* short identifier, e.g. "133" or "200"   */
+} cal_freq[N_CAL_FREQS] = {
+    {133333333, true,  "133"},
+    {200000000, false, "200"},
+};
+
+/* Calibrated configs, one per pass, per OSPI controller. sclk_freq is filled
+ * in from cal_freq[] at the start of each calibration pass. */
+ospi_delay_cfg_t delay_cfg_ram[N_CAL_FREQS] = {
+    {.idx = 0},
+    {.idx = 0},
+};
+
+ospi_delay_cfg_t delay_cfg_flash[N_CAL_FREQS] = {
+    {.idx = 1},
+    {.idx = 1},
+};
 
 #define OSPI0_XIP_BASE                          0xA0000000UL
 #define OSPI1_XIP_BASE                          0xC0000000UL
@@ -98,6 +115,14 @@ static void delay(uint32_t nticks)
         ;
 }
 
+static int set_ospi_clk_and_delay(ospi_cfg_t *ctx, ospi_delay_cfg_t *cfg)
+{
+    if (ospi_clk_cfg(ctx->regs, cfg->sclk_freq) != 0) {
+        return -1;
+    }
+    ospi_delay_cfg(ctx->aes, cfg);
+    return 0;
+}
 
 /* ==========================================================================
  * Delay calibration ("training") routines
@@ -148,13 +173,16 @@ static uint32_t tx_delay_cal(ospi_cfg_t *ospi_ctx, ospi_delay_cfg_t *cfg)
             test_addr = CAL_TX_SCRATCH_ADDR + (uint32_t)i * sizeof(write_val);
         } else {
             /* Pre-clear: write complement at low speed (guaranteed correct) */
-            ospi_clk_cfg(ospi_ctx->regs, BAUD, DRIVE_EDGE);
-            ospi_delay_cfg(ospi_ctx->aes, &delay_cfg_default);
+            if(set_ospi_clk_and_delay(ospi_ctx, &delay_cfg_default) != 0) {
+                return 2;
+            }
             ospi_ctx->write_data(ospi_ctx, test_addr, inv_write_val, 2);
         }
 
         /* Test write at high speed with TX delay = i, OE_N delay = i */
-        ospi_clk_cfg(ospi_ctx->regs, BAUDR_FAST, DRIVE_EDGE_FAST);
+        if (ospi_clk_cfg(ospi_ctx->regs, cfg->sclk_freq) != 0) {
+            return 3;
+        }
         ospi_delay_cfg_txd(ospi_ctx->aes, DELAY_CFG_16(i));
         if (ospi_ctx->calibrate_ssi_oe) {
             ospi_delay_cfg_ssioen(ospi_ctx->aes, DELAY_CFG_16(i));
@@ -162,8 +190,9 @@ static uint32_t tx_delay_cal(ospi_cfg_t *ospi_ctx, ospi_delay_cfg_t *cfg)
         ospi_ctx->write_data(ospi_ctx, test_addr, write_val, 2);
 
         /* Read back at low speed */
-        ospi_clk_cfg(ospi_ctx->regs, BAUD, DRIVE_EDGE);
-        ospi_delay_cfg(ospi_ctx->aes, &delay_cfg_default);
+        if(set_ospi_clk_and_delay(ospi_ctx, &delay_cfg_default) != 0) {
+            return 2;
+        }
 
         if (ospi_ctx->read_data(ospi_ctx, test_addr, read_data, 2)) {
 #if DEBUG_PRINTS
@@ -356,8 +385,9 @@ static uint32_t tx_dm_delay_cal(ospi_cfg_t *ospi_ctx, ospi_delay_cfg_t *cfg)
     uint32_t min0, max0, min3 = 0, max3 = 0;
 
     // Make sure we are running at the high speed
-    ospi_clk_cfg(ospi_ctx->regs, BAUDR_FAST, DRIVE_EDGE_FAST);
-    ospi_delay_cfg(ospi_ctx->aes, cfg);
+    if (set_ospi_clk_and_delay(ospi_ctx, cfg) != 0) {
+        return 3;
+    }
 
     /* Enter memory-mapped XIP mode (runs at the calibrated high speed). */
     ospi_xip_enter(ospi_ctx);
@@ -569,12 +599,9 @@ static uint32_t rxds_rx_delay_cal(ospi_cfg_t *ospi_ctx, ospi_delay_cfg_t *cfg)
     uint32_t min_delay[16], max_delay[16];
 
     // Make sure we are running at the high speed
-    ospi_clk_cfg(ospi_ctx->regs, BAUDR_FAST, DRIVE_EDGE_FAST);
-    ospi_delay_cfg(ospi_ctx->aes, cfg);
-
-    // puukko
-    //if (ospi_ctx->is_flash)
-    //    ospi_delay_cfg_txd(ospi_ctx->aes, DELAY_CFG_16(3));
+    if (set_ospi_clk_and_delay(ospi_ctx, cfg) != 0) {
+        return 3;
+    }
 
     /* -------- 1. Find RXDS working window ----------
      *
@@ -809,9 +836,11 @@ static int calibrate_device(ospi_cfg_t *ctx, ospi_delay_cfg_t *cfg, const char *
     }
 
     if (ctx->is_flash) {
-        /* The TXD sweep leaves an uncalibrated clock applied. */
-        ospi_clk_cfg(ctx->regs, BAUD, DRIVE_EDGE);
-        ospi_delay_cfg(ctx->aes, &delay_cfg_default);
+        /* Write pattern in slow mode */
+        if (set_ospi_clk_and_delay(ctx, &delay_cfg_default) != 0) {
+            return 2;
+        }
+
         if (cal_program_flash_pattern(ctx) != 0) {
             printf("%s: calibration pattern programming failed\n", name);
             return -1;
@@ -828,7 +857,7 @@ static int calibrate_device(ospi_cfg_t *ctx, ospi_delay_cfg_t *cfg, const char *
         return -1;
     }
 
-    ospi_clk_cfg(ctx->regs, BAUDR_FAST, DRIVE_EDGE_FAST);
+    ospi_clk_cfg(ctx->regs, cfg->sclk_freq);
     ospi_delay_cfg(ctx->aes, cfg);
 
     return 0;
@@ -911,8 +940,10 @@ int main(void)
     ospi_ram->calibrate_ssi_oe = false;
 
     enable_ospi_clk(OSPI_INSTANCE_0);
-    ospi_clk_cfg(ospi_ram->regs, BAUD, DRIVE_EDGE);
-    ospi_delay_cfg(ospi_ram->aes, &delay_cfg_default);
+    if (set_ospi_clk_and_delay(ospi_ram, &delay_cfg_default) != 0) {
+        printf("Failed to set OSPI clock and delay\n");
+        goto wait_forever;
+    }
 
     /* Flash device context (OSPI1 / AES1) */
     ospi_cfg_t *flash_ctx = &ospi_flash;
@@ -924,8 +955,10 @@ int main(void)
     flash_ctx->is_dual_octal = false;
 
     enable_ospi_clk(OSPI_INSTANCE_1);
-    ospi_clk_cfg(flash_ctx->regs, BAUD, DRIVE_EDGE);
-    ospi_delay_cfg(flash_ctx->aes, &delay_cfg_default);
+    if (set_ospi_clk_and_delay(flash_ctx, &delay_cfg_default) != 0) {
+        printf("Failed to set OSPI clock and delay\n");
+        goto wait_forever;
+    }
 
     /* Probe the ISSI IS25W NOR flash. Optional: absence is not fatal so the
      * tool can still calibrate RAM-only boards. */
@@ -982,80 +1015,143 @@ int main(void)
         }
     }
 
-    bool ram_ok = have_ram && (calibrate_device(ospi_ram, &delay_cfg_ram, "RAM") == 0);
+    
+    /* Two-pass calibration: one pass per entry in cal_freq[]. Both OSPI
+     * controllers share the OSPI clock source, so each pass calibrates RAM and
+     * flash together. Return to the slow default speed between passes so stale
+     * delays from the previous pass don't break the erase/probe path in
+     * tx_delay_cal. */
+    bool ram_ok[N_CAL_FREQS]   = {0};
+    bool flash_ok[N_CAL_FREQS] = {0};
 
-    /* Independent of the RAM result: the flash sits on its own controller. */
-    bool flash_ok = have_flash &&
-                    (calibrate_device(flash_ctx, &delay_cfg_flash, "Flash") == 0);
+    for (int p = 0; p < N_CAL_FREQS; p++) {
+        char label[32];
 
-    if (ram_ok) {
+        ospi_clk_select(cal_freq[p].clk_sel_266mhz);
+
+        delay_cfg_ram[p].sclk_freq   = cal_freq[p].sclk_freq;
+        delay_cfg_flash[p].sclk_freq = cal_freq[p].sclk_freq;
+
+        if (have_ram) {
+            (void)set_ospi_clk_and_delay(ospi_ram, &delay_cfg_default);
+        }
+        if (have_flash) {
+            (void)set_ospi_clk_and_delay(flash_ctx, &delay_cfg_default);
+        }
+
+        snprintf(label, sizeof(label), "RAM @ %s", cal_freq[p].id_str);
+        ram_ok[p] = have_ram &&
+                    (calibrate_device(ospi_ram, &delay_cfg_ram[p], label) == 0);
+
+        snprintf(label, sizeof(label), "Flash @ %s", cal_freq[p].id_str);
+        flash_ok[p] = have_flash &&
+                      (calibrate_device(flash_ctx, &delay_cfg_flash[p], label) == 0);
+    }
+
+    /* Post-calibration memory tests, run once per calibrated frequency. Each
+     * iteration switches back to the matching OSPI core clock and re-applies
+     * the calibrated delays before exercising the devices. */
+    for (int p = 0; p < N_CAL_FREQS; p++) {
+        printf("\n===== Post-calibration tests @ %s =====\n", cal_freq[p].id_str);
+        ospi_clk_select(cal_freq[p].clk_sel_266mhz);
+
+        if (ram_ok[p]) {
+            if (set_ospi_clk_and_delay(ospi_ram, &delay_cfg_ram[p]) != 0) {
+                printf("Failed to apply RAM calibration @ %s\n", cal_freq[p].id_str);
+            } else {
 #if XIP_MEMORY_TESTS
-        /* The RAM tests exercise the PSRAM as normal cacheable memory */
-        MPU_Set_OSPI0_XIP_Cacheable();
+                /* The RAM tests exercise the PSRAM as normal cacheable memory */
+                MPU_Set_OSPI0_XIP_Cacheable();
 
-        ospi_xip_enter(ospi_ram);
-        printf("\nLinear RAM test XIP (CPU cache enabled)\n");
-        printf("---------------------------------------\n");
-        ram_linear_test((uint8_t *) OSPI0_XIP_BASE, 1024 * 1024, 1);
+                ospi_xip_enter(ospi_ram);
+                printf("\nLinear RAM test XIP (CPU cache enabled)\n");
+                printf("---------------------------------------\n");
+                ram_linear_test((uint8_t *) OSPI0_XIP_BASE, 1024 * 1024, 1);
 
-        printf("\nRandom RAM test XIP (CPU cache enabled)\n");
-        printf("---------------------------------------\n");
-        ram_random_test((uint8_t *) OSPI0_XIP_BASE + (8*1024*1024), 0x20000, 1024 * 1024, 1);
+                printf("\nRandom RAM test XIP (CPU cache enabled)\n");
+                printf("---------------------------------------\n");
+                ram_random_test((uint8_t *) OSPI0_XIP_BASE + (8*1024*1024), 0x20000, 1024 * 1024, 1);
 
-        MPU_Set_OSPI0_XIP_Device();
-        ospi_xip_exit(ospi_ram);
+                MPU_Set_OSPI0_XIP_Device();
+                ospi_xip_exit(ospi_ram);
 #endif
 
 #if FAST_INTEGRITY_CHECK
-        printf("\nFast integrity check (non-XIP)\n");
-        printf("------------------------------\n");
-        integrity_write_pattern(ospi_ram);
+                printf("\nFast integrity check (non-XIP)\n");
+                printf("------------------------------\n");
+                integrity_write_pattern(ospi_ram);
 
-        printf("Read pattern at high speed\n");
-        integrity_verify_pattern(ospi_ram);
+                printf("Read pattern at high speed\n");
+                integrity_verify_pattern(ospi_ram);
 
-        printf("Read again at low speed\n");
-        ospi_clk_cfg(ospi_ram->regs, BAUD, DRIVE_EDGE);
-        ospi_delay_cfg(ospi_ram->aes, &delay_cfg_default);
-        integrity_verify_pattern(ospi_ram);
+                printf("Read again at low speed\n");
+                if (set_ospi_clk_and_delay(ospi_ram, &delay_cfg_default) != 0) {
+                    printf("Failed to set OSPI clock and delay\n");
+                    goto wait_forever;
+                }
+
+                integrity_verify_pattern(ospi_ram);
 #endif
-    }
+            }
+        }
 
 #if XIP_MEMORY_TESTS
-    if (flash_ok) {
-        printf("\nFlash XIP read test (calibration region, CPU cache enabled)\n");
-        printf("----------------------------------------------------------\n");
-        flash_xip_read_test(flash_ctx, CAL_XIP_FLASH_PASSES);
-    }
+        if (flash_ok[p]) {
+            if (set_ospi_clk_and_delay(flash_ctx, &delay_cfg_flash[p]) != 0) {
+                printf("Failed to apply flash calibration @ %s\n", cal_freq[p].id_str);
+            } else {
+                printf("\nFlash XIP read test (calibration region, CPU cache enabled)\n");
+                printf("----------------------------------------------------------\n");
+                flash_xip_read_test(flash_ctx, CAL_XIP_FLASH_PASSES);
+            }
+        }
 #endif
+    }
 
     /* Log the calibration results as pasteable C */
-    if (ram_ok) {
-        printf("\n/* Calibrated RAM OSPI delays */\n");
-        ospi_delay_cfg_print(&delay_cfg_ram, "calibrated_delay_cfg");
-        printf("\n");
-    }
-    if (flash_ok) {
-        printf("\n/* Calibrated flash OSPI delays */\n");
-        ospi_delay_cfg_print(&delay_cfg_flash, "flash_calibrated_delay_cfg");
-        printf("\n");
+    for (int p = 0; p < N_CAL_FREQS; p++) {
+        char name[48];
+        if (ram_ok[p]) {
+            printf("\n/* Calibrated RAM OSPI delays @ %s */\n", cal_freq[p].id_str);
+            snprintf(name, sizeof(name), "calibrated_delay_cfg_ram_%s", cal_freq[p].id_str);
+            ospi_delay_cfg_print(&delay_cfg_ram[p], name);
+            printf("\n");
+        }
+        if (flash_ok[p]) {
+            printf("\n/* Calibrated flash OSPI delays @ %s */\n", cal_freq[p].id_str);
+            snprintf(name, sizeof(name), "calibrated_delay_cfg_flash_%s", cal_freq[p].id_str);
+            ospi_delay_cfg_print(&delay_cfg_flash[p], name);
+            printf("\n");
+        }
     }
 
-    /* Persist the results in the flash result sector for other applications. */
-    if (flash_ok) {
-        ospi_delay_cfg_t cfgs[2];
+    /* Persist the results in the flash result sector for other applications.
+     * Each entry carries its own idx/sclk_freq so the consumer can pick the
+     * one matching its target controller and clock. */
+    if (have_flash) {
+        ospi_delay_cfg_t cfgs[2 * N_CAL_FREQS];
         uint32_t         count = 0;
 
-        if (ram_ok) {
-            cfgs[count++] = delay_cfg_ram;
+        for (int p = 0; p < N_CAL_FREQS; p++) {
+            if (ram_ok[p]) {
+                cfgs[count++] = delay_cfg_ram[p];
+            }
         }
-        cfgs[count++] = delay_cfg_flash;
+        for (int p = 0; p < N_CAL_FREQS; p++) {
+            if (flash_ok[p]) {
+                cfgs[count++] = delay_cfg_flash[p];
+            }
+        }
 
-        printf("\nStoring calibration results\n");
-        printf("---------------------------\n");
-        ospi_clk_cfg(flash_ctx->regs, BAUD, DRIVE_EDGE);
-        ospi_delay_cfg(flash_ctx->aes, &delay_cfg_default);
-        cal_store_delay_cfgs(flash_ctx, cfgs, count);
+        if (count > 0) {
+            printf("\nStoring calibration results (%u configs)\n", count);
+            printf("---------------------------\n");
+            if (set_ospi_clk_and_delay(flash_ctx, &delay_cfg_default) != 0) {
+                printf("Failed to set OSPI clock and delay\n");
+                goto wait_forever;
+            }
+            cal_store_delay_cfgs(flash_ctx, cfgs, count);
+        }
     }
 
 wait_forever:

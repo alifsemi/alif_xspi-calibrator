@@ -134,7 +134,7 @@ void ospi_xip_cfg(OSPI_Type *ospi,
 void ospi_xip_enter(ospi_cfg_t *ospi_ctx);
 void ospi_xip_exit(ospi_cfg_t *ospi_ctx);
 
-void ospi_clk_cfg(OSPI_Type *ospi, uint32_t clk_div, uint32_t drive_edge);
+int ospi_clk_cfg(OSPI_Type *ospi, uint32_t sclk);
 
 /* Configure the 16 individual RXD delay taps.
  *   aes        Pointer to the AES peripheral
@@ -163,6 +163,9 @@ void ospi_delay_cfg_rxds(AES_Type *aes, const uint8_t rxds_delay[2]);
  *   txddm_delay  Array of 2 DM data delays: index 0 -> TXD_DM_0,
  *                index 1 -> TXD_DM_1 */
 void ospi_delay_cfg_txddm(AES_Type *aes, const uint8_t txddm_delay[2]);
+
+
+void ospi_clk_select(bool sel_flag);
 
 /* Apply a full TXD + RXD delay configuration.
  *   aes    Pointer to the AES peripheral

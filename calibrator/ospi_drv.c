@@ -75,12 +75,81 @@ void ospi_setup_write(OSPI_Type *ospi, uint32_t dfs, uint32_t frf_type, uint32_t
     ospi_enable(ospi);
 }
 
-void ospi_clk_cfg(OSPI_Type *ospi, uint32_t clk_div, uint32_t drive_edge)
+// Original in Driver_OSPI_Private.h
+// TODO: Replace with the DFP-provided implementation when available
+#include "sys_clocks.h"
+#define SEL_OSPI_CLK_MASK (1U << 0)
+
+static inline uint32_t getOSPICoreClock_mod(void)
 {
+// TODO: This flag works for now but should really have something like SOC_FEAT_OSPI_CLK_SELECT
+#if SOC_FEAT_AES_OSPI_SIGNALS_DELAY
+    if (CGU->MISC_CLK_CTRL & SEL_OSPI_CLK_MASK) {
+        return SOC_FEAT_PLL_CLK1_MAX_HZ / 3; // 266MHz on E8
+    }
+#endif
+    return GetSystemAXIClock();
+}
+
+/**
+ * @brief Select the OSPI clock source.
+ *
+ * @param sel_flag If true, select the alternate OSPI clock source (266MHz); otherwise, select the default (400Mhz)
+ */
+void ospi_clk_select(bool sel_flag)
+{
+    if (sel_flag) {
+        CGU->MISC_CLK_CTRL |= SEL_OSPI_CLK_MASK;
+    } else {
+        CGU->MISC_CLK_CTRL &= ~SEL_OSPI_CLK_MASK;
+    }
+}
+
+int ospi_clk_cfg(OSPI_Type *ospi, uint32_t sclk)
+{
+    const uint32_t sclk_tol_hz = 100U;
+
+    if (sclk == 0) {
+        return -1;
+    }
+
+    uint32_t ospi_core_clk = getOSPICoreClock_mod();
+    /* Round to nearest integer divider */
+    uint32_t baudr = (uint32_t)(((uint64_t)ospi_core_clk + ((uint64_t)sclk / 2ULL)) / (uint64_t)sclk);
+    if (baudr == 0U) {
+        return -1;
+    }
+
+    /* BAUDR must be even on this controller. */
+    if (baudr & 1U) {
+        return -1;
+    }
+
+    if (baudr < 2U || baudr > 0xFFFEU) {
+        return -1;
+    }
+
+    /* Accept only tiny requested-vs-achievable SCLK mismatch */
+    {
+        uint64_t req_mul = (uint64_t)sclk * baudr;
+        uint64_t err_num = (req_mul >= (uint64_t)ospi_core_clk)
+                               ? (req_mul - (uint64_t)ospi_core_clk)
+                               : ((uint64_t)ospi_core_clk - req_mul);
+
+        /* |requested_sclk - achievable_sclk| <= sclk_tol_hz
+         * <=> |sclk*baudr - core_clk| <= baudr*sclk_tol_hz */
+        if (err_num > ((uint64_t)baudr * (uint64_t)sclk_tol_hz)) {
+            return -1;
+        }
+    }
+
+    uint32_t drive_edge = baudr > 2U ? 1U : 0U;
+
     ospi_disable(ospi);
-    ospi->OSPI_BAUDR = clk_div;
+    ospi->OSPI_BAUDR = baudr;
     ospi->OSPI_DDR_DRIVE_EDGE = drive_edge;
     ospi_enable(ospi);
+    return 0;
 }
 
 /* Set OSPI XIP configuration */
