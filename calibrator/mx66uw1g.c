@@ -240,7 +240,7 @@ static int mx66uw1g_wait_ready(ospi_cfg_t *ospi_ctx, uint8_t err_flags)
     const uint32_t saved_edge = regs->OSPI_DDR_DRIVE_EDGE;
     int            ret        = -1;
 
-    ospi_clk_cfg(regs, MX66UW1G_REG_WRITE_BAUD, MX66UW1G_REG_WRITE_DRIVE_EDGE);
+    ospi_clk_cfg(regs, MX66UW1G_REG_WRITE_SCLK);
 
     for (int poll = 0; poll < 1000; poll++) {
         uint8_t val = 0;
@@ -264,7 +264,8 @@ static int mx66uw1g_wait_ready(ospi_cfg_t *ospi_ctx, uint8_t err_flags)
         }
     }
 
-    ospi_clk_cfg(regs, saved_baud, saved_edge);
+    ospi_set_baud(regs, saved_baud);
+    ospi_set_ddr_drive_edge(regs, saved_edge);
     return ret;
 }
 
@@ -326,7 +327,7 @@ int mx66uw1g_erase_sector(ospi_cfg_t *ospi_ctx, uint32_t address)
     const uint32_t saved_edge = regs->OSPI_DDR_DRIVE_EDGE;
     int            ret;
 
-    ospi_clk_cfg(regs, MX66UW1G_REG_WRITE_BAUD, MX66UW1G_REG_WRITE_DRIVE_EDGE);
+    ospi_clk_cfg(regs, MX66UW1G_REG_WRITE_SCLK);
 
     ret = mx66uw1g_write_enable(ospi_ctx);
     if (ret == 0) {
@@ -344,7 +345,8 @@ int mx66uw1g_erase_sector(ospi_cfg_t *ospi_ctx, uint32_t address)
         }
     }
 
-    ospi_clk_cfg(regs, saved_baud, saved_edge);
+    ospi_set_baud(regs, saved_baud);
+    ospi_set_ddr_drive_edge(regs, saved_edge);
 
 #if DEBUG_PRINTS
     if (ret != 0) {

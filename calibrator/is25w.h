@@ -39,15 +39,7 @@ extern "C" {
 
 #define IS25W_VOL_CONFIG_DRIVE_STRENGTH   0x03U
 
-/* Controller clock used for the direct-register VCR write path (is25w_write_reg).
- * The DFP may leave OSPI1 at an unknown baud after PowerControl, so a known slow
- * clock is programmed for the register write. Matches the tool's slow BAUD. */
-#ifndef IS25W_REG_WRITE_BAUD
-#define IS25W_REG_WRITE_BAUD              40U
-#endif
-#ifndef IS25W_REG_WRITE_DRIVE_EDGE
-#define IS25W_REG_WRITE_DRIVE_EDGE        1U
-#endif
+#define IS25W_REG_WRITE_SCLK              16666666U
 
 /* Flag status register bits */
 #define IS25W_FLAG_STATUS_BUSY            0x80U /* 0 = program/erase in progress */

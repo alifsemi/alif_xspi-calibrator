@@ -46,12 +46,7 @@ extern "C" {
 
 /* Controller clock used for the completion handshake and erase, so those can
  * never fail while the caller drives the bus at an uncalibrated speed. */
-#ifndef MX66UW1G_REG_WRITE_BAUD
-#define MX66UW1G_REG_WRITE_BAUD           40U
-#endif
-#ifndef MX66UW1G_REG_WRITE_DRIVE_EDGE
-#define MX66UW1G_REG_WRITE_DRIVE_EDGE     1U
-#endif
+#define MX66UW1G_REG_WRITE_SCLK           16666666U
 
 /* ==========================================================================
  * Device geometry

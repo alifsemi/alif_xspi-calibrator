@@ -16,7 +16,14 @@ On DevKit-E8 External RAM is auto-detected: AP Memory APS512XXN PSRAM or ISSI IS
 
 ## Calibration flow
 
-The tool trains each delay group using a known pattern, picks the centre of each passing window, then validates the result.
+The tool runs the full delay training twice, once per target SCLK, and stores a separate `ospi_delay_cfg_t` for each:
+
+- **200 MHz pass** — OSPI core clock selected to 400 MHz (`ospi_clk_select(false)`), SCLK divider = 2.
+- **133 MHz pass** — OSPI core clock selected to 266 MHz (`ospi_clk_select(true)`), SCLK divider = 2.
+
+After both passes the post-calibration memory tests are re-run at each frequency, and up to four calibrated configs (RAM/flash × 133/200 MHz) are printed as pasteable C and stored in the flash result sector.
+
+Within a single pass the tool trains each delay group using a known pattern, picks the centre of each passing window, then validates the result.
 In flash calibration flow the TXD test values are not written to a single address as in RAM case. Instead a scratch sector is erased and the values are written to sequential addresses.
 The datamask signal calibration is skipped completely for flash and the memory tests also differ. The RAM is tested more thoroughly while the flash final test is based on a 64KiB XIP pattern read.
 
@@ -32,12 +39,16 @@ The datamask signal calibration is skipped completely for flash and the memory t
 ```
 typedef struct ospi_delay_cfg {
     uint32_t idx;       /* OSPI controller the config belongs to (0 or 1) */
-    uint32_t sclk_freq; /* OSPI controller SCLK frequency */
+    uint32_t sclk_freq; /* OSPI controller SCLK frequency (calibration was done with this frequency) */
     uint8_t txd[16];    /* per-line TXD delay taps (index 0..15)     */
     uint8_t rxd[16];    /* per-line RXD delay taps (index 0..15)     */
     uint8_t ssioen[16]; /* per-line OE_N delay taps (index 0..15)    */
     uint8_t rxds[2];    /* RXDS strobe delays (index 0..1)           */
     uint8_t txddm[2];   /* TXD DM data delays (index 0..1)           */
+    uint8_t dmoen[2];   /* DM OE_N delays (index 0..1)               */
+    uint8_t sclk;       /* SCLK delay                                */
+    uint8_t sclkn;      /* SCLK_N delay                              */
+    uint8_t ssn[2];     /* SS_N delays (index 0..1)                  */
 } ospi_delay_cfg_t;
 
 ```
